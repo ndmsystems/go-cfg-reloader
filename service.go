@@ -1,4 +1,4 @@
-package cfg
+package reloader
 
 import (
 	"encoding/json"
