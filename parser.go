@@ -152,11 +152,12 @@ func (s *svc) parseData(data []byte) error {
 		return err
 	}
 
-	for k, v := range s.keys {
-		if raw, ok := jc[k]; ok {
-			if !bytes.Equal(v.orig, raw) {
-				v.fnCallBack(k, raw)
-				v.orig = raw
+	for i := range s.keys {
+		key := s.keys[i]
+		if raw, ok := jc[key.name]; ok {
+			if !bytes.Equal(key.orig, raw) {
+				key.fnCallBack(key.name, raw)
+				key.orig = raw
 			}
 		}
 	}

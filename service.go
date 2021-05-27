@@ -12,11 +12,13 @@ type svc struct {
 	files     []*fileInfo
 	errLogger api.ErrorLoggerFunc
 
-	keys       map[string]*keyInfo
+	// keys       map[string]*keyInfo
+	keys       []*keyInfo
 	reloadTime time.Time
 }
 
 type keyInfo struct {
+	name       string
 	fnCallBack api.CallbackFunc
 	orig       json.RawMessage // raw key data
 }
@@ -46,7 +48,8 @@ func New(
 	s := &svc{
 		files:     make([]*fileInfo, len(files)),
 		errLogger: errLogger,
-		keys:      make(map[string]*keyInfo),
+		keys:      make([]*keyInfo, 0),
+		// keys:      make(map[string]*keyInfo),
 	}
 
 	for i, filename := range files {
@@ -63,9 +66,10 @@ func (s *svc) KeyAdd(key string, fnCallBack api.CallbackFunc) error {
 		return errKeyCallbackIsNil
 	}
 
-	s.keys[key] = &keyInfo{
+	s.keys = append(s.keys, &keyInfo{
+		name:       key,
 		fnCallBack: fnCallBack,
-	}
+	})
 
 	return nil
 }
