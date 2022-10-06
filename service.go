@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/tdx/go-cfg-reloader/api"
+	"github.com/ndmsystems/go-cfg-reloader/api"
 )
 
 type svc struct {
@@ -38,9 +38,7 @@ var (
 	errKeyCallbackIsNil = errors.New("key callback function is nil")
 )
 
-//
 // New return service object
-//
 func New(
 	files []string,
 	errLogger api.ErrorLoggerFunc) api.CfgReloaderService {
@@ -59,7 +57,6 @@ func New(
 	return s
 }
 
-//
 func (s *svc) KeyAdd(key string, fnCallBack api.CallbackFunc) error {
 
 	if fnCallBack == nil {
@@ -74,7 +71,6 @@ func (s *svc) KeyAdd(key string, fnCallBack api.CallbackFunc) error {
 	return nil
 }
 
-//
 func (s *svc) Start() error {
 
 	if err := s.parse(); err != nil {
@@ -97,7 +93,6 @@ func (s *svc) Start() error {
 	return nil
 }
 
-//
 func (s *svc) ReloadTime() time.Time {
 	return s.reloadTime
 }

@@ -1,3 +1,3 @@
-module github.com/tdx/go-cfg-reloader
+module github.com/ndmsystems/go-cfg-reloader
 
 go 1.13
