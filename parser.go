@@ -2,10 +2,10 @@ package reloader
 
 import (
 	"bytes"
+	"crypto/md5"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 )
 
@@ -14,54 +14,45 @@ type cfgBuf map[string]interface{}
 
 var (
 	errInvalidConfigJSON = errors.New("parseData: invalid json")
+	errNotModified       = errors.New("config not modified")
 )
 
 func (s *svc) parse() error {
-
 	filesChanged := false
+	fileDataMap := make(map[string][]byte, len(s.files))
+	hashMap := make(map[string]string, len(s.files))
 	for _, cfg := range s.files {
-		fi, err := os.Lstat(cfg.filename)
+		data, hash, err := s.getDataAndHash(cfg.filename)
 		if err != nil {
-			if os.IsNotExist(err) {
-				cfg.exists = false
-				continue
-			} else {
-				return fmt.Errorf(
-					"%s lstat(%s) failed: %v", tag, cfg.filename, err)
-			}
+			return err
 		}
-		cfg.exists = true
+		oldHash, ok := s.hashMap[cfg.filename]
 
-		if cfg.modTime == nil {
-			filesChanged = true
-		} else if fi.ModTime() != *cfg.modTime {
+		if ok && hash != oldHash || (!ok || oldHash == "") && hash != "" {
 			filesChanged = true
 		}
+
+		fileDataMap[cfg.filename] = data
+		hashMap[cfg.filename] = hash
 	}
 
 	if !filesChanged {
-		return nil
+		return errNotModified
 	}
 
 	buf := make(cfgBuf)
 
 	// merge all files into buf
 	for _, cfg := range s.files {
-		if !cfg.exists {
+		data := fileDataMap[cfg.filename]
+		if len(data) == 0 {
 			continue
 		}
-		err := s.mergeCfgFromFile(buf, cfg)
+		err := s.mergeCfgFromBuf(buf, data)
 		if err != nil {
 			return fmt.Errorf(
 				"%s failed to process config: %s: %v", tag, cfg.filename, err)
 		}
-
-		fi, err := os.Lstat(cfg.filename)
-		if err != nil {
-			return fmt.Errorf("%s lstat(%s) failed: %v", tag, cfg.filename, err)
-		}
-		modTime := fi.ModTime()
-		cfg.modTime = &modTime
 	}
 
 	fullCfg, err := json.MarshalIndent(buf, "", "    ")
@@ -73,25 +64,9 @@ func (s *svc) parse() error {
 		return fmt.Errorf("%s parse failed: %v", tag, err)
 	}
 
+	s.hashMap = hashMap
+
 	return nil
-}
-
-//
-// Locals
-//
-func (s *svc) mergeCfgFromFile(buf cfgBuf, cfg *fileInfo) error {
-
-	file, err := os.Open(cfg.filename)
-	if err != nil {
-		return err
-	}
-
-	data, err := ioutil.ReadAll(file)
-	if err != nil {
-		return err
-	}
-
-	return s.mergeCfgFromBuf(buf, data)
 }
 
 func (s *svc) mergeCfgFromBuf(buf cfgBuf, data []byte) error {
@@ -163,4 +138,17 @@ func (s *svc) parseData(data []byte) error {
 	}
 
 	return nil
+}
+
+func (s *svc) getDataAndHash(fName string) ([]byte, string, error) {
+	if _, err := os.Stat(fName); errors.Is(err, os.ErrNotExist) {
+		return []byte{}, "", nil
+	}
+
+	data, err := os.ReadFile(fName)
+	if err != nil {
+		return nil, "", err
+	}
+	hash := fmt.Sprintf("%x", md5.Sum(data))
+	return data, hash, nil
 }
