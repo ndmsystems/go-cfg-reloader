@@ -94,10 +94,10 @@ func (s *svc) mergeData(buf cfgBuf, key string, data interface{}) {
 
 	switch data := data.(type) {
 	case map[string]interface{}:
+		if _, ok := buf[key]; !ok {
+			buf[key] = make(cfgBuf)
+		}
 		for k, v := range data {
-			if _, ok := buf[key]; !ok {
-				buf[key] = make(cfgBuf)
-			}
 			s.mergeData((buf[key]).(cfgBuf), k, v)
 		}
 
