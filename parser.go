@@ -17,7 +17,7 @@ var (
 	errNotModified       = errors.New("config not modified")
 )
 
-func (s *svc) parse() error {
+func (s *svc) parse(forceReload bool) error {
 	filesChanged := false
 	fileDataMap := make(map[string][]byte, len(s.files))
 	hashMap := make(map[string]string, len(s.files))
@@ -36,7 +36,8 @@ func (s *svc) parse() error {
 		hashMap[cfg.filename] = hash
 	}
 
-	if !filesChanged {
+	if !filesChanged && !forceReload {
+		// if files not changed and no need to force reload
 		return errNotModified
 	}
 
