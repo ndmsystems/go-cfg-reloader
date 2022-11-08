@@ -86,7 +86,7 @@ func (s *svc) KeyAdd(key string, fnCallBack api.CallbackFunc) error {
 func (s *svc) Start() error {
 	var err error
 	// first time parse config
-	if err = s.parse(); err != nil {
+	if err = s.parse(true); err != nil {
 		return err
 	}
 	s.reloadTime = time.Now()
@@ -132,7 +132,7 @@ func (s *svc) Start() error {
 				}
 
 				if _, ok := filesMap[event.Name]; ok && event.Op&eventMask > 0 {
-					if err := s.parse(); err != nil {
+					if err := s.parse(false); err != nil {
 						if !errors.Is(err, errNotModified) {
 							s.errLogger(err)
 						}
@@ -158,6 +158,18 @@ func (s *svc) Stop() {
 	close(s.done)
 	s.eDispatcher.stop()
 	_ = s.watcher.Close()
+}
+
+// ForceReload ...
+func (s *svc) ForceReload(reason string) error {
+	if err := s.parse(true); err != nil {
+		return fmt.Errorf("couldn't reload config: %v", err)
+	}
+
+	s.eDispatcher.push(reason)
+	s.reloadTime = time.Now()
+
+	return nil
 }
 
 // ReloadTime ...

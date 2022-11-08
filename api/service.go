@@ -16,7 +16,7 @@ type CfgReloaderService interface {
 	KeyAdd(key string, fnCallback CallbackFunc) error
 	Start() error
 	Stop()
-	// info
+	ForceReload(reason string) error
 	ReloadTime() time.Time
 	Events() <-chan Event
 }
