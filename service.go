@@ -22,8 +22,8 @@ type svc struct {
 	reloadTime  time.Time
 	eDispatcher *eventDispatcher
 	watcher     *fsnotify.Watcher
-
-	done chan struct{}
+	batchTime   time.Duration
+	done        chan struct{}
 }
 
 // keyInfo represents information according to json first level keys (name, parser functions etc.)
@@ -49,7 +49,9 @@ var (
 // New return service object
 func New(
 	files []string,
-	errLogger api.ErrorLoggerFunc) api.CfgReloaderService {
+	batchTime time.Duration,
+	errLogger api.ErrorLoggerFunc,
+) api.CfgReloaderService {
 
 	s := &svc{
 		files:       make([]*fileInfo, len(files)),
@@ -58,6 +60,7 @@ func New(
 		eDispatcher: newEventDispatcher(),
 		hashMap:     make(map[string]string),
 		done:        make(chan struct{}),
+		batchTime:   batchTime,
 	}
 
 	for i, filename := range files {
@@ -116,6 +119,8 @@ func (s *svc) Start() error {
 
 	// catch filesystem events, and reload config if any config file was changed
 	go func() {
+		var eventBatch []fsnotify.Event
+		var timer <-chan time.Time
 		for {
 			select {
 			case <-s.done:
@@ -130,17 +135,28 @@ func (s *svc) Start() error {
 				if !ok {
 					return
 				}
-
-				if _, ok := filesMap[event.Name]; ok && event.Op&eventMask > 0 {
+				if len(eventBatch) == 0 {
+					timer = time.After(s.batchTime)
+				}
+				eventBatch = append(eventBatch, event)
+			case <-timer:
+				needReload := false
+				for _, event := range eventBatch {
+					if _, ok := filesMap[event.Name]; ok && event.Op&eventMask > 0 {
+						needReload = true
+						s.eDispatcher.push(fmt.Sprintf("%s config file (%s)", event.Op.String(), event.Name))
+						s.reloadTime = time.Now()
+					}
+				}
+				if needReload {
 					if err := s.parse(false); err != nil {
 						if !errors.Is(err, errNotModified) {
 							s.errLogger(err)
 						}
-						continue
 					}
-					s.eDispatcher.push(fmt.Sprintf("%s config file (%s)", event.Op.String(), event.Name))
-					s.reloadTime = time.Now()
 				}
+				timer = nil
+				eventBatch = eventBatch[:0]
 			case err, ok := <-s.watcher.Errors:
 				if !ok {
 					return
