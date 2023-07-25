@@ -87,6 +87,24 @@ func TestReloader(t *testing.T) {
 		Z: []int{3, 4},
 	}, s)
 
+	// test batching
+	// do many operations and last returs initial value(so notihing happens)
+	xChangedCount = 0
+	writeFile(fileDir+"/"+"cfg1.json", `{"x":1, "y":{"a":2}, "z":[3, 4], "thrash": 2222}`)
+	writeFile(fileDir+"/"+"cfg1.json", `{"x":3, "y":{"a":2}, "z":[3, 4], "thrash": 2222}`)
+	writeFile(fileDir+"/"+"cfg1.json", `{"x":4, "y":{"a":2}, "z":[3, 4], "thrash": 2222}`)
+	writeFile(fileDir+"/"+"cfg1.json", `{"x":2, "y":{"a":2}, "z":[3, 4], "thrash": 2222}`)
+	time.Sleep(1 * time.Second)
+	r.Equal(0, xChangedCount)
+	r.Equal(TS{
+		X: 2,
+		Y: TSI{
+			A: 2,
+			B: 0,
+		},
+		Z: []int{3, 4},
+	}, s)
+
 	// adding new notifying file and check priorites and array merging
 	writeFile(fileDir+"/"+"cfg2.json", `{"x":3, "y":{"b":4}, "z":[5,6]}`)
 	time.Sleep(1 * time.Second)
