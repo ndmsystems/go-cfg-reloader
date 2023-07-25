@@ -16,16 +16,15 @@ import (
 
 // svc - the config reloader service
 type svc struct {
-	files     []*fileInfo
-	hashMap   map[string]string
-	errLogger api.ErrorLoggerFunc
+	files   []*fileInfo
+	hashMap map[string]string
+	logger  api.Logger
 
-	keys        []*keyInfo
-	reloadTime  time.Time
-	eDispatcher *eventDispatcher
-	watcher     *fsnotify.Watcher
-	batchTime   time.Duration
-	mu          sync.Mutex
+	keys       []*keyInfo
+	reloadTime time.Time
+	watcher    *fsnotify.Watcher
+	batchTime  time.Duration
+	mu         sync.Mutex
 }
 
 // keyInfo represents information according to json first level keys (name, parser functions etc.)
@@ -52,16 +51,15 @@ var (
 func New(
 	files []string,
 	batchTime time.Duration,
-	errLogger api.ErrorLoggerFunc,
+	logger api.Logger,
 ) api.CfgReloaderService {
 
 	s := &svc{
-		files:       make([]*fileInfo, len(files)),
-		errLogger:   errLogger,
-		keys:        make([]*keyInfo, 0),
-		eDispatcher: newEventDispatcher(),
-		hashMap:     make(map[string]string),
-		batchTime:   batchTime,
+		files:     make([]*fileInfo, len(files)),
+		logger:    logger,
+		keys:      make([]*keyInfo, 0),
+		hashMap:   make(map[string]string),
+		batchTime: batchTime,
 	}
 
 	for i, filename := range files {
@@ -146,15 +144,18 @@ func (s *svc) Start(ctx context.Context) error {
 			case <-timer:
 				needReload := false
 				for _, event := range eventBatch {
+					// eventMask contains bits we interested in
+					// if we do bitwise "and" of eventMask and one of that bits result will be > 0
+					// otherwise 0
 					if _, ok := filesMap[event.Name]; ok && event.Op&eventMask > 0 {
 						needReload = true
-						s.eDispatcher.push(fmt.Sprintf("%s config file (%s)", event.Op.String(), event.Name))
+						s.logger.Info(fmt.Sprintf("%s config file (%s)", event.Op.String(), event.Name))
 					}
 				}
 				if needReload {
 					if err := s.parse(false); err != nil {
 						if !errors.Is(err, errNotModified) {
-							s.errLogger(err)
+							s.logger.Error(err)
 						}
 					}
 				}
@@ -164,7 +165,7 @@ func (s *svc) Start(ctx context.Context) error {
 				if !ok {
 					return
 				}
-				s.errLogger(err)
+				s.logger.Error(err)
 			}
 		}
 	}()
@@ -174,16 +175,14 @@ func (s *svc) Start(ctx context.Context) error {
 
 // Stop ...
 func (s *svc) stop() {
-	s.eDispatcher.stop()
 	_ = s.watcher.Close()
 }
 
 // ForceReload ...
-func (s *svc) ForceReload(reason string) error {
+func (s *svc) ForceReload() error {
 	if err := s.parse(true); err != nil {
 		return fmt.Errorf("couldn't reload config: %v", err)
 	}
-	s.eDispatcher.push(reason)
 
 	return nil
 }
@@ -193,9 +192,4 @@ func (s *svc) ReloadTime() time.Time {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.reloadTime
-}
-
-// Events ...
-func (s *svc) Events() <-chan api.Event {
-	return s.eDispatcher.getEventsChan()
 }

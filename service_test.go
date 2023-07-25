@@ -14,6 +14,15 @@ import (
 
 const fileDir = "testdata"
 
+type logger struct {
+}
+
+func (l *logger) Info(vals ...interface{}) {
+	log.Println(vals...)
+}
+func (l *logger) Error(vals ...interface{}) {
+	log.Println(vals...)
+}
 func TestReloader(t *testing.T) {
 	r := require.New(t)
 	os.RemoveAll(fileDir)
@@ -23,8 +32,7 @@ func TestReloader(t *testing.T) {
 	writeFile(fileDir+"/"+"cfg1.json", `{"x":1, "y":{"a":2}, "z":[3, 4], "thrash": 2222}`)
 	writeFile(fileDir+"/"+"ignored.json", `{"x":2, "y":{"a":3, "b": 5}, "z":[5, 6]}`)
 
-	cr := reloader.New([]string{fileDir + "/" + "cfg1.json", fileDir + "/" + "cfg2.json"}, 500*time.Millisecond,
-		func(err error) { log.Println(err) })
+	cr := reloader.New([]string{fileDir + "/" + "cfg1.json", fileDir + "/" + "cfg2.json"}, 500*time.Millisecond, &logger{})
 	type TSI struct {
 		A int `json:"a"`
 		B int `json:"b"`
@@ -140,7 +148,7 @@ func TestReloader(t *testing.T) {
 	}, s)
 	// check force reload and reload time
 	os.Rename(fileDir+"/"+"thrash.json", fileDir+"/"+"cfg1.json")
-	cr.ForceReload("lol")
+	cr.ForceReload()
 	r.Less(time.Since(cr.ReloadTime()), time.Millisecond)
 
 }

@@ -6,8 +6,11 @@ import (
 	"time"
 )
 
-// ErrorLoggerFunc is a function to log error in service
-type ErrorLoggerFunc func(error)
+// Logger is the interface service uses for logging
+type Logger interface {
+	Info(...interface{})
+	Error(...interface{})
+}
 
 // CallbackFunc is a function called by service to get object to store config
 type CallbackFunc func(key string, data json.RawMessage)
@@ -16,13 +19,6 @@ type CallbackFunc func(key string, data json.RawMessage)
 type CfgReloaderService interface {
 	KeyAdd(key string, fnCallback CallbackFunc) error
 	Start(ctx context.Context) error
-	ForceReload(reason string) error
+	ForceReload() error
 	ReloadTime() time.Time
-	Events() <-chan Event
-}
-
-// Event - the config reloader event
-type Event struct {
-	Time   time.Time
-	Reason string
 }
