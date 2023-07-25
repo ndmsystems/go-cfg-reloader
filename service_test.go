@@ -1,6 +1,7 @@
 package reloader_test
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"os"
@@ -51,7 +52,7 @@ func TestReloader(t *testing.T) {
 		s.Z = nil
 		r.NoError(json.Unmarshal(data, &s.Z))
 	})
-	r.NoError(cr.Start())
+	r.NoError(cr.Start(context.Background()))
 	// check all parsed on start
 	r.Equal(TS{
 		X: 1,

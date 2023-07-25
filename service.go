@@ -1,6 +1,7 @@
 package reloader
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,7 +25,6 @@ type svc struct {
 	eDispatcher *eventDispatcher
 	watcher     *fsnotify.Watcher
 	batchTime   time.Duration
-	done        chan struct{}
 	mu          sync.Mutex
 }
 
@@ -61,7 +61,6 @@ func New(
 		keys:        make([]*keyInfo, 0),
 		eDispatcher: newEventDispatcher(),
 		hashMap:     make(map[string]string),
-		done:        make(chan struct{}),
 		batchTime:   batchTime,
 	}
 
@@ -90,7 +89,7 @@ func (s *svc) KeyAdd(key string, fnCallBack api.CallbackFunc) error {
 }
 
 // Start ...
-func (s *svc) Start() error {
+func (s *svc) Start(ctx context.Context) error {
 	var err error
 	// first time parse config
 	if err = s.parse(true); err != nil {
@@ -122,17 +121,19 @@ func (s *svc) Start() error {
 
 	// catch filesystem events, and reload config if any config file was changed
 	go func() {
+		defer s.stop()
+
 		var eventBatch []fsnotify.Event
 		var timer <-chan time.Time
 		for {
 			select {
-			case <-s.done:
+			case <-ctx.Done():
 				return
 			default:
 			}
 
 			select {
-			case <-s.done:
+			case <-ctx.Done():
 				return
 			case event, ok := <-s.watcher.Events:
 				if !ok {
@@ -172,8 +173,7 @@ func (s *svc) Start() error {
 }
 
 // Stop ...
-func (s *svc) Stop() {
-	close(s.done)
+func (s *svc) stop() {
 	s.eDispatcher.stop()
 	_ = s.watcher.Close()
 }

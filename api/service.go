@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"time"
 )
@@ -14,8 +15,7 @@ type CallbackFunc func(key string, data json.RawMessage)
 // CfgReloaderService ...
 type CfgReloaderService interface {
 	KeyAdd(key string, fnCallback CallbackFunc) error
-	Start() error
-	Stop()
+	Start(ctx context.Context) error
 	ForceReload(reason string) error
 	ReloadTime() time.Time
 	Events() <-chan Event
