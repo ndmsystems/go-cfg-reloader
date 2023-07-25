@@ -8,6 +8,9 @@ import (
 	"github.com/ndmsystems/go-cfg-reloader/api"
 )
 
+// а эта фигня точно нужна?
+// мб логировать тупо вместо того чтобы пушить сюда ивент
+
 // eventDispatcher ...
 type eventDispatcher struct {
 	sync.Mutex
@@ -25,6 +28,9 @@ func newEventDispatcher() *eventDispatcher {
 
 // getEventsChan ...
 func (d *eventDispatcher) getEventsChan() <-chan api.Event {
+	d.Lock()
+	defer d.Unlock()
+
 	if d.ch != nil {
 		return d.ch
 	}
@@ -51,12 +57,13 @@ func (d *eventDispatcher) getEventsChan() <-chan api.Event {
 
 // push ..
 func (d *eventDispatcher) push(reason string) {
+	d.Lock()
+	defer d.Unlock()
+
 	if d.ch == nil {
 		return
 	}
 
-	d.Lock()
-	defer d.Unlock()
 	d.queue.PushBack(api.Event{
 		Time:   time.Now(),
 		Reason: reason,

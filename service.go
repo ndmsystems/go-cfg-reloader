@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/ndmsystems/go-cfg-reloader/api"
@@ -24,6 +25,7 @@ type svc struct {
 	watcher     *fsnotify.Watcher
 	batchTime   time.Duration
 	done        chan struct{}
+	mu          sync.Mutex
 }
 
 // keyInfo represents information according to json first level keys (name, parser functions etc.)
@@ -71,6 +73,8 @@ func New(
 }
 
 // KeyAdd - adds a key
+// allows more than one cb on one key
+// no way to delete keys
 func (s *svc) KeyAdd(key string, fnCallBack api.CallbackFunc) error {
 
 	if fnCallBack == nil {
@@ -92,7 +96,6 @@ func (s *svc) Start() error {
 	if err = s.parse(true); err != nil {
 		return err
 	}
-	s.reloadTime = time.Now()
 
 	filesMap := make(map[string]struct{}, len(s.files))
 	dirsMap := make(map[string]struct{}, len(s.files))
@@ -145,7 +148,6 @@ func (s *svc) Start() error {
 					if _, ok := filesMap[event.Name]; ok && event.Op&eventMask > 0 {
 						needReload = true
 						s.eDispatcher.push(fmt.Sprintf("%s config file (%s)", event.Op.String(), event.Name))
-						s.reloadTime = time.Now()
 					}
 				}
 				if needReload {
@@ -181,15 +183,15 @@ func (s *svc) ForceReload(reason string) error {
 	if err := s.parse(true); err != nil {
 		return fmt.Errorf("couldn't reload config: %v", err)
 	}
-
 	s.eDispatcher.push(reason)
-	s.reloadTime = time.Now()
 
 	return nil
 }
 
 // ReloadTime ...
 func (s *svc) ReloadTime() time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.reloadTime
 }
 
