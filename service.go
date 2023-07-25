@@ -121,7 +121,6 @@ func (s *svc) Start(ctx context.Context) error {
 	go func() {
 		defer s.stop()
 
-		var eventBatch []fsnotify.Event
 		var timer <-chan time.Time
 		for {
 			select {
@@ -137,30 +136,23 @@ func (s *svc) Start(ctx context.Context) error {
 				if !ok {
 					return
 				}
-				if len(eventBatch) == 0 {
+				// eventMask contains bits we interested in
+				// if we do bitwise "and" of eventMask and one of that bits result will be > 0
+				// otherwise 0
+				if _, ok := filesMap[event.Name]; !ok || event.Op&eventMask == 0 {
+					continue
+				}
+				s.logger.Info(fmt.Sprintf("%s config file (%s)", event.Op.String(), event.Name))
+				if timer == nil {
 					timer = time.After(s.batchTime)
 				}
-				eventBatch = append(eventBatch, event)
 			case <-timer:
-				needReload := false
-				for _, event := range eventBatch {
-					// eventMask contains bits we interested in
-					// if we do bitwise "and" of eventMask and one of that bits result will be > 0
-					// otherwise 0
-					if _, ok := filesMap[event.Name]; ok && event.Op&eventMask > 0 {
-						needReload = true
-						s.logger.Info(fmt.Sprintf("%s config file (%s)", event.Op.String(), event.Name))
-					}
-				}
-				if needReload {
-					if err := s.parse(false); err != nil {
-						if !errors.Is(err, errNotModified) {
-							s.logger.Error(err)
-						}
+				if err := s.parse(false); err != nil {
+					if !errors.Is(err, errNotModified) {
+						s.logger.Error(err)
 					}
 				}
 				timer = nil
-				eventBatch = eventBatch[:0]
 			case err, ok := <-s.watcher.Errors:
 				if !ok {
 					return

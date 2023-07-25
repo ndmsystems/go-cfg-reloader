@@ -74,7 +74,7 @@ func TestReloader(t *testing.T) {
 	xChangedCount = 0
 	writeFile(fileDir+"/"+"ignored.json", `{"x":3, "y":{"a":3}, "z":[5, 6]}`)
 	time.Sleep(time.Second * 1)
-	// nothing changed is ignored file changed
+	// nothing changed if ignored file changed
 	r.Equal(0, xChangedCount)
 
 	writeFile(fileDir+"/"+"cfg1.json", `{"x":1, "y":{"a":2}, "z":[3, 4], "thrash": 2222}`)
