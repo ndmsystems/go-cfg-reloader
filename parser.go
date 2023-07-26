@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 )
 
 type jcfg map[string]json.RawMessage
@@ -18,6 +19,10 @@ var (
 )
 
 func (s *svc) parse(forceReload bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.reloadTime = time.Now()
+	s.logger.Info("reloading config at", s.reloadTime, "forced:", forceReload)
 	filesChanged := false
 	fileDataMap := make(map[string][]byte, len(s.files))
 	hashMap := make(map[string]string, len(s.files))
@@ -128,13 +133,11 @@ func (s *svc) parseData(data []byte) error {
 		return err
 	}
 
-	for i := range s.keys {
-		key := s.keys[i]
-		if raw, ok := jc[key.name]; ok {
-			if !bytes.Equal(key.orig, raw) {
-				key.fnCallBack(key.name, raw)
-				key.orig = raw
-			}
+	for _, key := range s.keys {
+		raw := jc[key.name]
+		if !bytes.Equal(key.orig, raw) {
+			key.fnCallBack(key.name, raw)
+			key.orig = raw
 		}
 	}
 
