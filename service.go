@@ -72,6 +72,7 @@ func New(
 // KeyAdd - adds a key
 // allows more than one cb on one key
 // no way to delete keys
+// if key was deleted fnCallback will be called with len(data) == 0
 func (s *svc) KeyAdd(key string, fnCallBack api.CallbackFunc) error {
 
 	if fnCallBack == nil {

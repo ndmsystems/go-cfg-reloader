@@ -47,6 +47,9 @@ func TestReloader(t *testing.T) {
 	// setup callback on all fields
 	cr.KeyAdd("x", func(key string, data json.RawMessage) {
 		s.X = 0
+		if len(data) == 0 {
+			return
+		}
 		r.NoError(json.Unmarshal(data, &s.X))
 	})
 	cr.KeyAdd("x", func(key string, data json.RawMessage) {
@@ -54,10 +57,16 @@ func TestReloader(t *testing.T) {
 	}) // two cbs allowed
 	cr.KeyAdd("y", func(key string, data json.RawMessage) {
 		s.Y = TSI{}
+		if len(data) == 0 {
+			return
+		}
 		r.NoError(json.Unmarshal(data, &s.Y))
 	})
 	cr.KeyAdd("z", func(key string, data json.RawMessage) {
 		s.Z = nil
+		if len(data) == 0 {
+			return
+		}
 		r.NoError(json.Unmarshal(data, &s.Z))
 	})
 	r.NoError(cr.Start(context.Background()))
@@ -139,12 +148,12 @@ func TestReloader(t *testing.T) {
 	time.Sleep(1 * time.Second)
 	// if all cfg files removed then it will not change it's value
 	r.Equal(TS{
-		X: 2,
+		X: 0,
 		Y: TSI{
-			A: 2,
+			A: 0,
 			B: 0,
 		},
-		Z: []int{3, 4},
+		Z: nil,
 	}, s)
 	// check force reload and reload time
 	os.Rename(fileDir+"/"+"thrash.json", fileDir+"/"+"cfg1.json")
