@@ -29,7 +29,7 @@ type ConfigReloader[T any] struct {
 	reloadTime time.Time
 	watcher    *fsnotify.Watcher
 	batchTime  time.Duration
-	mu         sync.Mutex
+	mu         sync.RWMutex
 }
 
 // fileInfo - represents config file information
@@ -165,15 +165,15 @@ func (s *ConfigReloader[T]) ForceReload() error {
 
 // ReloadTime returns last time config was changed
 func (s *ConfigReloader[T]) ReloadTime() time.Time {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.reloadTime
 }
 
 // Config returns current config
 // should not be used in callback (deadlock)
 func (s *ConfigReloader[T]) Config() T {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.curConfig
 }
