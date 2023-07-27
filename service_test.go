@@ -2,7 +2,6 @@ package reloader_test
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"os"
 	"testing"
@@ -24,15 +23,6 @@ func (l *logger) Error(vals ...interface{}) {
 	log.Println(vals...)
 }
 func TestReloader(t *testing.T) {
-	r := require.New(t)
-	os.RemoveAll(fileDir)
-	os.Mkdir(fileDir, 0o775)
-	defer os.RemoveAll(fileDir)
-
-	writeFile(fileDir+"/"+"cfg1.json", `{"x":1, "y":{"a":2}, "z":[3, 4], "thrash": 2222}`)
-	writeFile(fileDir+"/"+"ignored.json", `{"x":2, "y":{"a":3, "b": 5}, "z":[5, 6]}`)
-
-	cr := reloader.New([]string{fileDir + "/" + "cfg1.json", fileDir + "/" + "cfg2.json"}, 500*time.Millisecond, &logger{})
 	type TSI struct {
 		A int `json:"a"`
 		B int `json:"b"`
@@ -42,33 +32,29 @@ func TestReloader(t *testing.T) {
 		Y TSI   `json:"y"`
 		Z []int `json:"z"`
 	}
+
+	r := require.New(t)
+	os.RemoveAll(fileDir)
+	os.Mkdir(fileDir, 0o775)
+	defer os.RemoveAll(fileDir)
+
+	writeFile(fileDir+"/"+"cfg1.json", `{"x":1, "y":{"a":2}, "z":[3, 4], "thrash": 2222}`)
+	writeFile(fileDir+"/"+"ignored.json", `{"x":2, "y":{"a":3, "b": 5}, "z":[5, 6]}`)
+
+	cr := reloader.New[TS]([]string{fileDir + "/" + "cfg1.json", fileDir + "/" + "cfg2.json"}, 500*time.Millisecond, &logger{})
+
 	s := TS{}
 	xChangedCount := 0
 	// setup callback on all fields
-	cr.KeyAdd("x", func(key string, data json.RawMessage) {
-		s.X = 0
-		if len(data) == 0 {
-			return
-		}
-		r.NoError(json.Unmarshal(data, &s.X))
+	cr.Subscribe(func(oldConfig, curConfig TS) {
+		s = curConfig
 	})
-	cr.KeyAdd("x", func(key string, data json.RawMessage) {
-		xChangedCount++
-	}) // two cbs allowed
-	cr.KeyAdd("y", func(key string, data json.RawMessage) {
-		s.Y = TSI{}
-		if len(data) == 0 {
-			return
+	cr.Subscribe(func(oldConfig, curConfig TS) {
+		if oldConfig.X != curConfig.X {
+			xChangedCount++
 		}
-		r.NoError(json.Unmarshal(data, &s.Y))
 	})
-	cr.KeyAdd("z", func(key string, data json.RawMessage) {
-		s.Z = nil
-		if len(data) == 0 {
-			return
-		}
-		r.NoError(json.Unmarshal(data, &s.Z))
-	})
+
 	r.NoError(cr.Start(context.Background()))
 	// check all parsed on start
 	r.Equal(TS{
@@ -79,6 +65,9 @@ func TestReloader(t *testing.T) {
 		},
 		Z: []int{3, 4},
 	}, s)
+
+	// check Config works on start
+	r.Equal(s, cr.Config())
 
 	xChangedCount = 0
 	writeFile(fileDir+"/"+"ignored.json", `{"x":3, "y":{"a":3}, "z":[5, 6]}`)
@@ -103,6 +92,9 @@ func TestReloader(t *testing.T) {
 		},
 		Z: []int{3, 4},
 	}, s)
+
+	// check Config works on change
+	r.Equal(s, cr.Config())
 
 	// test batching
 	// do many operations and last returs initial value(so notihing happens)
