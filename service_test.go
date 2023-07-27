@@ -44,14 +44,17 @@ func TestReloader(t *testing.T) {
 	cr := reloader.New[TS]([]string{fileDir + "/" + "cfg1.json", fileDir + "/" + "cfg2.json"}, 500*time.Millisecond, &logger{})
 
 	s := TS{}
-	cbCalledCount := 0
+	xChangedCount := 0
 	// setup callback on all fields
 	cr.Subscribe(func(oldConfig, curConfig TS) {
 		s = curConfig
 	})
-	cr.Subscribe(func(_, _ TS) {
-		cbCalledCount++
+	cr.Subscribe(func(oldConfig, curConfig TS) {
+		if oldConfig.X != curConfig.X {
+			xChangedCount++
+		}
 	})
+
 	r.NoError(cr.Start(context.Background()))
 	// check all parsed on start
 	r.Equal(TS{
@@ -66,16 +69,21 @@ func TestReloader(t *testing.T) {
 	// check Config works on start
 	r.Equal(s, cr.Config())
 
-	cbCalledCount = 0
+	xChangedCount = 0
 	writeFile(fileDir+"/"+"ignored.json", `{"x":3, "y":{"a":3}, "z":[5, 6]}`)
 	time.Sleep(time.Second * 1)
 	// nothing changed if ignored file changed
-	r.Equal(0, cbCalledCount)
+	r.Equal(0, xChangedCount)
+
+	writeFile(fileDir+"/"+"cfg1.json", `{"x":1, "y":{"a":2}, "z":[3, 4], "thrash": 2222}`)
+	time.Sleep(time.Second * 1)
+	// field x not changed so no calls
+	r.Equal(0, xChangedCount)
 
 	writeFile(fileDir+"/"+"cfg1.json", `{"x":2, "y":{"a":2}, "z":[3, 4], "thrash": 2222}`)
 	time.Sleep(time.Second * 1)
 	// field x changed
-	r.Equal(1, cbCalledCount)
+	r.Equal(1, xChangedCount)
 	r.Equal(TS{
 		X: 2,
 		Y: TSI{
@@ -89,14 +97,14 @@ func TestReloader(t *testing.T) {
 	r.Equal(s, cr.Config())
 
 	// test batching
-	// do many operations and last returs initial value(only on call)
-	cbCalledCount = 0
+	// do many operations and last returs initial value(so notihing happens)
+	xChangedCount = 0
 	writeFile(fileDir+"/"+"cfg1.json", `{"x":1, "y":{"a":2}, "z":[3, 4], "thrash": 2222}`)
 	writeFile(fileDir+"/"+"cfg1.json", `{"x":3, "y":{"a":2}, "z":[3, 4], "thrash": 2222}`)
 	writeFile(fileDir+"/"+"cfg1.json", `{"x":4, "y":{"a":2}, "z":[3, 4], "thrash": 2222}`)
 	writeFile(fileDir+"/"+"cfg1.json", `{"x":2, "y":{"a":2}, "z":[3, 4], "thrash": 2222}`)
 	time.Sleep(1 * time.Second)
-	r.Equal(1, cbCalledCount)
+	r.Equal(0, xChangedCount)
 	r.Equal(TS{
 		X: 2,
 		Y: TSI{
