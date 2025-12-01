@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -96,6 +97,10 @@ func (s *ConfigReloader[T]) Start(ctx context.Context) error {
 	// add config directories to watcher
 	for d := range dirsMap {
 		if e := s.watcher.Add(d); e != nil {
+			if os.IsNotExist(e) {
+				s.logger.Info(fmt.Sprintf("config directory %s does not exist, skipping watch", d))
+				continue
+			}
 			return e
 		}
 	}
