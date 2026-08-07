@@ -2,26 +2,18 @@ package reloader_test
 
 import (
 	"context"
-	"log"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
-	reloader "github.com/ndmsystems/go-cfg-reloader"
 	"github.com/stretchr/testify/require"
+
+	reloader "github.com/ndmsystems/go-cfg-reloader"
 )
 
 const fileDir = "testdata"
 
-type logger struct {
-}
-
-func (l *logger) Info(vals ...interface{}) {
-	log.Println(vals...)
-}
-func (l *logger) Error(vals ...interface{}) {
-	log.Println(vals...)
-}
 func TestReloader(t *testing.T) {
 	type TSI struct {
 		A int `json:"a"`
@@ -41,22 +33,11 @@ func TestReloader(t *testing.T) {
 	writeFile(fileDir+"/"+"cfg1.json", `{"x":1, "y":{"a":2}, "z":[3, 4], "thrash": 2222}`)
 	writeFile(fileDir+"/"+"ignored.json", `{"x":2, "y":{"a":3, "b": 5}, "z":[5, 6]}`)
 
-	cr := reloader.New[TS]([]string{fileDir + "/" + "cfg1.json", fileDir + "/" + "cfg2.json"}, 500*time.Millisecond, &logger{})
+	cr, err := reloader.New[TS]([]string{fileDir + "/" + "cfg1.json", fileDir + "/" + "cfg2.json"}, 500*time.Millisecond)
+	r.NoError(err)
 
-	s := TS{}
-	xChangedCount := 0
-	// setup callback on all fields
-	cr.Subscribe(func(oldConfig, curConfig TS) {
-		s = curConfig
-	})
-	cr.Subscribe(func(oldConfig, curConfig TS) {
-		if oldConfig.X != curConfig.X {
-			xChangedCount++
-		}
-	})
-
-	r.NoError(cr.Start(context.Background()))
-	// check all parsed on start
+	// initial config is read directly, not via a Subscribe callback:
+	// New already parsed it before any callback could be registered.
 	r.Equal(TS{
 		X: 1,
 		Y: TSI{
@@ -64,26 +45,33 @@ func TestReloader(t *testing.T) {
 			B: 0,
 		},
 		Z: []int{3, 4},
-	}, s)
+	}, cr.Config())
 
-	// check Config works on start
-	r.Equal(s, cr.Config())
+	// xChangedCount is written from the Start goroutine (via the callback
+	// below) and read from the test goroutine, so it must be atomic.
+	var xChangedCount atomic.Int32
+	cr.Subscribe(func(oldConfig, curConfig TS) {
+		if oldConfig.X != curConfig.X {
+			xChangedCount.Add(1)
+		}
+	})
 
-	xChangedCount = 0
+	r.NoError(cr.Start(context.Background()))
+
 	writeFile(fileDir+"/"+"ignored.json", `{"x":3, "y":{"a":3}, "z":[5, 6]}`)
 	time.Sleep(time.Second * 1)
 	// nothing changed if ignored file changed
-	r.Equal(0, xChangedCount)
+	r.EqualValues(0, xChangedCount.Load())
 
 	writeFile(fileDir+"/"+"cfg1.json", `{"x":1, "y":{"a":2}, "z":[3, 4], "thrash": 2222}`)
 	time.Sleep(time.Second * 1)
 	// field x not changed so no calls
-	r.Equal(0, xChangedCount)
+	r.EqualValues(0, xChangedCount.Load())
 
 	writeFile(fileDir+"/"+"cfg1.json", `{"x":2, "y":{"a":2}, "z":[3, 4], "thrash": 2222}`)
 	time.Sleep(time.Second * 1)
 	// field x changed
-	r.Equal(1, xChangedCount)
+	r.EqualValues(1, xChangedCount.Load())
 	r.Equal(TS{
 		X: 2,
 		Y: TSI{
@@ -91,20 +79,17 @@ func TestReloader(t *testing.T) {
 			B: 0,
 		},
 		Z: []int{3, 4},
-	}, s)
-
-	// check Config works on change
-	r.Equal(s, cr.Config())
+	}, cr.Config())
 
 	// test batching
 	// do many operations and last returs initial value(so notihing happens)
-	xChangedCount = 0
+	xChangedCount.Store(0)
 	writeFile(fileDir+"/"+"cfg1.json", `{"x":1, "y":{"a":2}, "z":[3, 4], "thrash": 2222}`)
 	writeFile(fileDir+"/"+"cfg1.json", `{"x":3, "y":{"a":2}, "z":[3, 4], "thrash": 2222}`)
 	writeFile(fileDir+"/"+"cfg1.json", `{"x":4, "y":{"a":2}, "z":[3, 4], "thrash": 2222}`)
 	writeFile(fileDir+"/"+"cfg1.json", `{"x":2, "y":{"a":2}, "z":[3, 4], "thrash": 2222}`)
 	time.Sleep(1 * time.Second)
-	r.Equal(0, xChangedCount)
+	r.EqualValues(0, xChangedCount.Load())
 	r.Equal(TS{
 		X: 2,
 		Y: TSI{
@@ -112,7 +97,7 @@ func TestReloader(t *testing.T) {
 			B: 0,
 		},
 		Z: []int{3, 4},
-	}, s)
+	}, cr.Config())
 
 	// adding new notifying file and check priorites and array merging
 	writeFile(fileDir+"/"+"cfg2.json", `{"x":3, "y":{"b":4}, "z":[5,6]}`)
@@ -124,7 +109,7 @@ func TestReloader(t *testing.T) {
 			B: 4,
 		},
 		Z: []int{3, 4, 5, 6},
-	}, s)
+	}, cr.Config())
 	os.Remove(fileDir + "/" + "cfg2.json")
 	time.Sleep(1 * time.Second)
 	r.Equal(TS{
@@ -134,7 +119,7 @@ func TestReloader(t *testing.T) {
 			B: 0,
 		},
 		Z: []int{3, 4},
-	}, s) // no cfg2 so it like cfg1
+	}, cr.Config()) // no cfg2 so it like cfg1
 
 	os.Rename(fileDir+"/"+"cfg1.json", fileDir+"/"+"thrash.json") // renaming file to some ignored name
 	time.Sleep(1 * time.Second)
@@ -146,7 +131,7 @@ func TestReloader(t *testing.T) {
 			B: 0,
 		},
 		Z: nil,
-	}, s)
+	}, cr.Config())
 	// check force reload and reload time
 	os.Rename(fileDir+"/"+"thrash.json", fileDir+"/"+"cfg1.json")
 	cr.ForceReload()

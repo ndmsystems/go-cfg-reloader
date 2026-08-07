@@ -10,11 +10,10 @@ import (
 type jcfg map[string]json.RawMessage
 type cfgBuf map[string]interface{}
 
-func (s *ConfigReloader[T]) reloadConfig(forceReload bool) error {
+func (s *ConfigReloader[T]) reloadConfig() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.reloadTime = time.Now()
-	s.logger.Info("reloading config at", s.reloadTime, "forced:", forceReload)
 
 	buf := make(cfgBuf)
 
@@ -29,19 +28,18 @@ func (s *ConfigReloader[T]) reloadConfig(forceReload bool) error {
 		}
 
 		if err := s.mergeCfgFromBuf(buf, data); err != nil {
-			return fmt.Errorf(
-				"failed to process config: %s: %v", cfg.filename, err)
+return fmt.Errorf("failed to process config %s: %w", cfg.filename, err)
 		}
 	}
 
 	fullCfg, err := json.MarshalIndent(buf, "", "    ")
 	if err != nil {
-		return fmt.Errorf("json.Marshal failed: %v", err)
+		return fmt.Errorf("json.Marshal failed: %w", err)
 	}
 
 	var newCfg T
 	if err := json.Unmarshal(fullCfg, &newCfg); err != nil {
-		return err
+		return fmt.Errorf("json.Unmarshal failed: %w", err)
 	}
 
 	for _, cb := range s.callbacks {
@@ -53,7 +51,7 @@ func (s *ConfigReloader[T]) reloadConfig(forceReload bool) error {
 	return nil
 }
 
-// существует только из-за того что (не)нужно аппендить массивы
+// Существует только из-за того что (не)нужно аппендить массивы
 func (s *ConfigReloader[T]) mergeCfgFromBuf(buf cfgBuf, data []byte) error {
 
 	jc := new(jcfg)
@@ -75,7 +73,7 @@ func (s *ConfigReloader[T]) mergeCfgFromBuf(buf cfgBuf, data []byte) error {
 	return nil
 }
 
-// существует только из-за того что (не)нужно аппендить массивы
+// Существует только из-за того что (не)нужно аппендить массивы
 func (s *ConfigReloader[T]) mergeData(buf cfgBuf, key string, data interface{}) {
 
 	switch data := data.(type) {

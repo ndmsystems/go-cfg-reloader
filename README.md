@@ -1,33 +1,47 @@
 # go-cfg-reloader
+
 JSON config reloader
 
 ```go
-// app config struct
-type App struct {
-	Host    string
-	Port    string
-	Key     string
-	Pass    string
-}
+import (
+	"context"
+	"time"
 
-basePath := "/usr/local/app/settings/"
-
-reloader := reloader.New(
-    []string{
-        filepath.Join(basePath, "app-default.json"),
-    },
-    func(err error) { fmt.Println(err) },
+	reloader "github.com/ndmsystems/go-cfg-reloader"
 )
 
-// config handler called when config reloaded
-cfgHandler := func(key string, data json.RawMessage) {
-    obj := new(App)
-    if err := json.Unmarshal(data, &obj); err != nil {
-        // handle error
-    }
-    // got config data under "app" json key
+type Config struct {
+	Host string `json:"host"`
+	Port int    `json:"port"`
 }
 
-reloader.KeyAdd("app", cfgHandler)
-reloader.Start()
+// Load reads and parses the config files once, synchronously. An error here
+// means there's no usable config yet.
+cr, err := reloader.New[Config](
+	[]string{"config-default.json", "config-instance.json"},
+	3*time.Second, // batches rapid successive file changes into one reload
+)
+if err != nil {
+	// handle error
+	os.Exit(1)
+}
+
+// the initial config is available right away
+cfg := cr.Config()
+
+// Subscribe registers a callback for subsequent reloads. Call before Start,
+// so no update can be missed in between.
+cr.Subscribe(func(oldCfg, newCfg Config) {
+	// react to the change
+})
+
+// OnError is optional: observes errors from the background watcher. The
+// reloader keeps serving the last good config either way.
+cr.OnError(func(err error) {
+	// log it, if you want
+})
+
+if err := cr.Start(context.Background()); err != nil {
+	// handle error
+}
 ```

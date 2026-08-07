@@ -12,25 +12,20 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-// Logger is the interface service uses for logging
-type Logger interface {
-	Info(...interface{})
-	Error(...interface{})
-}
-
 // CallbackFunc is a func called on config changed
 type CallbackFunc[T any] func(oldConfig, curConfig T)
 
 // ConfigReloader - the config reloader service
 type ConfigReloader[T any] struct {
-	files      []*fileInfo
-	logger     Logger
+	files     []*fileInfo
+	batchTime time.Duration
+	watcher   *fsnotify.Watcher
+
+	mu         sync.RWMutex // guards following fields
 	curConfig  T
 	callbacks  []CallbackFunc[T]
 	reloadTime time.Time
-	watcher    *fsnotify.Watcher
-	batchTime  time.Duration
-	mu         sync.RWMutex
+	onError    func(error)
 }
 
 // fileInfo - represents config file information
@@ -39,19 +34,14 @@ type fileInfo struct {
 }
 
 var (
-	errKeyCallbackIsNil = errors.New("key callback function is nil")
+	errCallbackIsNil = errors.New("callback function is nil")
 )
 
-// New return service object
-func New[T any](
-	files []string,
-	batchTime time.Duration,
-	logger Logger,
-) *ConfigReloader[T] {
+// New loads config from files and returns service object
+func New[T any](files []string, batchTime time.Duration) (*ConfigReloader[T], error) {
 
 	s := &ConfigReloader[T]{
 		files:     make([]*fileInfo, len(files)),
-		logger:    logger,
 		batchTime: batchTime,
 	}
 
@@ -59,13 +49,17 @@ func New[T any](
 		s.files[i] = &fileInfo{filename: filename}
 	}
 
-	return s
+	if err := s.reloadConfig(); err != nil {
+		return nil, err
+	}
+
+	return s, nil
 }
 
+// Subscribe registers a callback that's called with the old and new config whenever the config is reloaded
 func (s *ConfigReloader[T]) Subscribe(cb CallbackFunc[T]) error {
-
 	if cb == nil {
-		return errKeyCallbackIsNil
+		return errCallbackIsNil
 	}
 
 	s.callbacks = append(s.callbacks, cb)
@@ -73,13 +67,9 @@ func (s *ConfigReloader[T]) Subscribe(cb CallbackFunc[T]) error {
 	return nil
 }
 
-// Start ...
+// Start begins watching the config files for changes in the background
 func (s *ConfigReloader[T]) Start(ctx context.Context) error {
 	var err error
-	// first time parse config
-	if err = s.reloadConfig(true); err != nil {
-		return err
-	}
 
 	filesMap := make(map[string]struct{}, len(s.files))
 	dirsMap := make(map[string]struct{}, len(s.files))
@@ -98,7 +88,6 @@ func (s *ConfigReloader[T]) Start(ctx context.Context) error {
 	for d := range dirsMap {
 		if e := s.watcher.Add(d); e != nil {
 			if os.IsNotExist(e) {
-				s.logger.Info(fmt.Sprintf("config directory %s does not exist, skipping watch", d))
 				continue
 			}
 			return e
@@ -133,20 +122,19 @@ func (s *ConfigReloader[T]) Start(ctx context.Context) error {
 				if _, ok := filesMap[event.Name]; !ok || event.Op&eventMask == 0 {
 					continue
 				}
-				s.logger.Info(fmt.Sprintf("%s config file (%s)", event.Op.String(), event.Name))
 				if timer == nil {
 					timer = time.After(s.batchTime)
 				}
 			case <-timer:
-				if err := s.reloadConfig(false); err != nil {
-					s.logger.Error(err)
+				if err := s.reloadConfig(); err != nil {
+					s.notifyError(err)
 				}
 				timer = nil
 			case err, ok := <-s.watcher.Errors:
 				if !ok {
 					return
 				}
-				s.logger.Error(err)
+				s.notifyError(err)
 			}
 		}
 	}()
@@ -154,15 +142,25 @@ func (s *ConfigReloader[T]) Start(ctx context.Context) error {
 	return nil
 }
 
-// stop ...
+// stop closes the file watcher, ending the background goroutine started by Start.
 func (s *ConfigReloader[T]) stop() {
 	_ = s.watcher.Close()
 }
 
-// ForceReload ...
+// notifyError calls the OnError handler, if one is set
+func (s *ConfigReloader[T]) notifyError(err error) {
+s.mu.RLock()
+fn := s.onError
+s.mu.RUnlock()
+
+if fn != nil {
+	fn(err)
+}
+
+// ForceReload reloads the config from files and calls the callbacks
 func (s *ConfigReloader[T]) ForceReload() error {
-	if err := s.reloadConfig(true); err != nil {
-		return fmt.Errorf("couldn't reload config: %v", err)
+	if err := s.reloadConfig(); err != nil {
+		return fmt.Errorf("couldn't reload config: %w", err)
 	}
 
 	return nil
@@ -181,4 +179,12 @@ func (s *ConfigReloader[T]) Config() T {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.curConfig
+}
+
+// OnError sets the error handler function
+func (s *ConfigReloader[T]) OnError(fn func(error)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.onError = fn
 }
