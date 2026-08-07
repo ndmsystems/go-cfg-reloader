@@ -149,12 +149,12 @@ func (s *ConfigReloader[T]) stop() {
 
 // notifyError calls the OnError handler, if one is set
 func (s *ConfigReloader[T]) notifyError(err error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+s.mu.RLock()
+fn := s.onError
+s.mu.RUnlock()
 
-	if s.onError != nil {
-		s.onError(err)
-	}
+if fn != nil {
+	fn(err)
 }
 
 // ForceReload reloads the config from files and calls the callbacks

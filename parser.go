@@ -28,7 +28,7 @@ func (s *ConfigReloader[T]) reloadConfig() error {
 		}
 
 		if err := s.mergeCfgFromBuf(buf, data); err != nil {
-			return fmt.Errorf("failed to process config: %w", err)
+return fmt.Errorf("failed to process config %s: %w", cfg.filename, err)
 		}
 	}
 
