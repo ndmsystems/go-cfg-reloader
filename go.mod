@@ -1,4 +1,4 @@
-module github.com/ndmsystems/go-cfg-reloader
+module github.com/ndmsystems/go-cfg-reloader/v2
 
 go 1.20
 
