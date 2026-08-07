@@ -58,9 +58,6 @@ func New[T any](files []string, batchTime time.Duration) (*ConfigReloader[T], er
 
 // Subscribe registers a callback that's called with the old and new config whenever the config is reloaded
 func (s *ConfigReloader[T]) Subscribe(cb CallbackFunc[T]) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if cb == nil {
 		return errCallbackIsNil
 	}
